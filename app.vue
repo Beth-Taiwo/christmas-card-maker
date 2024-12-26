@@ -16,6 +16,13 @@
           class="px-4 py-1 border w-full"
           placeholder="Enter greeting"
         />
+
+        <select v-model="selectedFont" class="px-4 py-1 border w-full">
+          <option value="">Select a font</option>
+          <option v-for="font in fonts" :key="font" :value="font">
+            {{ formatString(font.url) }}
+          </option>
+        </select>
         <input
           type="file"
           accept=".png, .jpg, .jpeg"
@@ -38,7 +45,7 @@
 <script setup lang="ts">
 import { createSSRApp } from "vue";
 import { renderToString } from "@vue/server-renderer";
-import { useLocalStorage, watchDebounced } from "@vueuse/core";
+import { useLocalStorage } from "@vueuse/core";
 import satori from "satori";
 import { html } from "satori-html";
 import ChristmasCard from "./components/ChristmasCard.vue";
@@ -50,19 +57,32 @@ const form = useLocalStorage("app-form", {
 });
 const svg = ref("");
 const fonts = ref([]);
+const selectedFont = ref<any>();
 
 onMounted(async () => {
-  fonts.value = await loadFonts([
-    { name: "InstrumentSans", url: "/fonts/InstrumentSans-Regular.ttf" },
-  ]);
+  await fetchFonts();
   refreshGraphics();
 });
 
-watchDebounced(form, refreshGraphics, {
-  deep: true,
-  debounce: 500,
-  maxWait: 1000,
+watch(
+  form,
+  async () => {
+    await refreshGraphics();
+  },
+  { deep: true }
+);
+
+watch(selectedFont, async () => {
+  await refreshGraphics();
 });
+
+watch(
+  fonts,
+  () => {
+    selectedFont.value = fonts.value[10];
+  },
+  { immediate: true }
+);
 
 async function loadFonts(fonts) {
   return Promise.all(
@@ -79,7 +99,7 @@ async function refreshGraphics() {
   svg.value = await satori(markup, {
     width: 1080,
     height: 1080,
-    fonts: fonts.value,
+    fonts: [selectedFont.value],
   });
 }
 
@@ -111,6 +131,25 @@ function downloadSvgAsJpeg(svgString, filename = "image.jpeg") {
     URL.revokeObjectURL(url);
   };
   img.src = url;
+}
+
+async function fetchFonts() {
+  try {
+    const response = await fetch("/api/available-fonts");
+    const data = await response.json();
+    fonts.value = await loadFonts(
+      data.map((font) => ({
+        name: "InstrumentSans",
+        url: `/fonts/${font}`,
+      }))
+    );
+  } catch (error) {
+    console.error("Error fetching fonts:", error);
+  }
+}
+
+function formatString(string: string) {
+  return string.replace("/fonts/", "");
 }
 </script>
 <style>
